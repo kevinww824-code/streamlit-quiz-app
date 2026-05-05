@@ -1,167 +1,302 @@
 import re
+import time
 import random
 import pandas as pd
 import streamlit as st
 
+# -----------------------------
+# CONFIG
+# -----------------------------
 EXCEL_PATH = "CDMP-Associate_1.xlsx"
 SHEET_NAME = "sheet1"
 
-# ---------- Helpers ----------
+st.set_page_config(page_title="Quiz App", layout="centered")
+
+
+# -----------------------------
+# HELPERS (Excel parsing)
+# -----------------------------
 def extract_answer_letter(v):
-    # Example in Excel: "正确答案：D" -> returns "D"
+    """
+    Excel answer cell example: '正确答案：D' -> returns 'D'
+    """
     m = re.search(r"([A-E])", str(v).upper())
     return m.group(1) if m else ""
 
+
 def clean_option_text(text):
     """
-    Removes leading 'A. ', 'B. ', etc. if your Excel already contains it.
-    'A. Attributes' -> 'Attributes'
+    Removes leading 'A. ', 'B. ', etc. if Excel already contains it.
+    e.g., 'A. Attributes' -> 'Attributes'
     """
     return re.sub(r"^[A-E]\s*\.\s*", "", str(text)).strip()
+
 
 @st.cache_data(show_spinner=False)
 def load_quiz():
     """
-    Your Excel has 2 header rows and data begins from row index 2. [1](https://newworlddevelopment-my.sharepoint.com/personal/kevinwong_nwd_com_hk/_layouts/15/Doc.aspx?sourcedoc=%7B43BF5816-F67A-4355-A61C-A0D2516DAFD0%7D&file=CDMP-Associate_1%20-%20Copy.xlsx&action=default&mobileredirect=true)
-    Columns used (based on your file structure):
-    r[1]  = Question EN
-    r[3]  = Option A EN
-    r[5]  = Option B EN
-    r[7]  = Option C EN
-    r[9]  = Option D EN
-    r[11] = Option E EN
-    r[13] = Answer (e.g., 正确答案：D)
-    r[14] = Interpretation/Explanation (your sample shows Chinese text here) [1](https://newworlddevelopment-my.sharepoint.com/personal/kevinwong_nwd_com_hk/_layouts/15/Doc.aspx?sourcedoc=%7B43BF5816-F67A-4355-A61C-A0D2516DAFD0%7D&file=CDMP-Associate_1%20-%20Copy.xlsx&action=default&mobileredirect=true)
+    Matches your Excel layout:
+    - 2 header rows; real data starts at row index 2
+    - Question EN: column 1
+    - Options EN: A=3, B=5, C=7, D=9, E=11
+    - Answer: column 13 (e.g., 正确答案：D)
+    - Interpretation/Explanation: column 14
     """
     raw = pd.read_excel(EXCEL_PATH, sheet_name=SHEET_NAME, header=None, engine="openpyxl")
     data = raw.iloc[2:].copy()  # data starts from row index 2 [1](https://newworlddevelopment-my.sharepoint.com/personal/kevinwong_nwd_com_hk/_layouts/15/Doc.aspx?sourcedoc=%7B43BF5816-F67A-4355-A61C-A0D2516DAFD0%7D&file=CDMP-Associate_1%20-%20Copy.xlsx&action=default&mobileredirect=true)
 
     quiz = []
     for _, r in data.iterrows():
-        q = str(r[1]).strip() if pd.notna(r[1]) else ""
+        q = str(r[1]).strip() if pd.notna(r[1]) else ""  # English question in col 1 [1](https://newworlddevelopment-my.sharepoint.com/personal/kevinwong_nwd_com_hk/_layouts/15/Doc.aspx?sourcedoc=%7B43BF5816-F67A-4355-A61C-A0D2516DAFD0%7D&file=CDMP-Associate_1%20-%20Copy.xlsx&action=default&mobileredirect=true)
         if not q:
             continue
 
         options = {
-            "A": clean_option_text(r[3]) if pd.notna(r[3]) else "",
-            "B": clean_option_text(r[5]) if pd.notna(r[5]) else "",
-            "C": clean_option_text(r[7]) if pd.notna(r[7]) else "",
-            "D": clean_option_text(r[9]) if pd.notna(r[9]) else "",
-            "E": clean_option_text(r[11]) if pd.notna(r[11]) else "",
+            "A": clean_option_text(r[3]) if pd.notna(r[3]) else "",   # Option A EN in col 3 [1](https://newworlddevelopment-my.sharepoint.com/personal/kevinwong_nwd_com_hk/_layouts/15/Doc.aspx?sourcedoc=%7B43BF5816-F67A-4355-A61C-A0D2516DAFD0%7D&file=CDMP-Associate_1%20-%20Copy.xlsx&action=default&mobileredirect=true)
+            "B": clean_option_text(r[5]) if pd.notna(r[5]) else "",   # Option B EN in col 5 [1](https://newworlddevelopment-my.sharepoint.com/personal/kevinwong_nwd_com_hk/_layouts/15/Doc.aspx?sourcedoc=%7B43BF5816-F67A-4355-A61C-A0D2516DAFD0%7D&file=CDMP-Associate_1%20-%20Copy.xlsx&action=default&mobileredirect=true)
+            "C": clean_option_text(r[7]) if pd.notna(r[7]) else "",   # Option C EN in col 7 [1](https://newworlddevelopment-my.sharepoint.com/personal/kevinwong_nwd_com_hk/_layouts/15/Doc.aspx?sourcedoc=%7B43BF5816-F67A-4355-A61C-A0D2516DAFD0%7D&file=CDMP-Associate_1%20-%20Copy.xlsx&action=default&mobileredirect=true)
+            "D": clean_option_text(r[9]) if pd.notna(r[9]) else "",   # Option D EN in col 9 [1](https://newworlddevelopment-my.sharepoint.com/personal/kevinwong_nwd_com_hk/_layouts/15/Doc.aspx?sourcedoc=%7B43BF5816-F67A-4355-A61C-A0D2516DAFD0%7D&file=CDMP-Associate_1%20-%20Copy.xlsx&action=default&mobileredirect=true)
+            "E": clean_option_text(r[11]) if pd.notna(r[11]) else "", # Option E EN in col 11 [1](https://newworlddevelopment-my.sharepoint.com/personal/kevinwong_nwd_com_hk/_layouts/15/Doc.aspx?sourcedoc=%7B43BF5816-F67A-4355-A61C-A0D2516DAFD0%7D&file=CDMP-Associate_1%20-%20Copy.xlsx&action=default&mobileredirect=true)
         }
         options = {k: v for k, v in options.items() if v}
+
+        answer = extract_answer_letter(r[13])  # Answer in col 13 [1](https://newworlddevelopment-my.sharepoint.com/personal/kevinwong_nwd_com_hk/_layouts/15/Doc.aspx?sourcedoc=%7B43BF5816-F67A-4355-A61C-A0D2516DAFD0%7D&file=CDMP-Associate_1%20-%20Copy.xlsx&action=default&mobileredirect=true)
+        interpretation = str(r[14]).strip() if pd.notna(r[14]) else ""  # Explanation in col 14 [1](https://newworlddevelopment-my.sharepoint.com/personal/kevinwong_nwd_com_hk/_layouts/15/Doc.aspx?sourcedoc=%7B43BF5816-F67A-4355-A61C-A0D2516DAFD0%7D&file=CDMP-Associate_1%20-%20Copy.xlsx&action=default&mobileredirect=true)
 
         quiz.append({
             "question": q,
             "options": options,
-            "answer": extract_answer_letter(r[13]),
-            "interpretation": str(r[14]).strip() if pd.notna(r[14]) else ""
+            "answer": answer,
+            "interpretation": interpretation
         })
 
     return quiz
 
-def reset_session_for_mode(mode: str, n_questions: int):
-    """Reset progress, order, score when switching modes."""
+
+# -----------------------------
+# SESSION STATE MANAGEMENT
+# -----------------------------
+def reset_quiz(mode: str, n_questions: int, shuffle_questions: bool):
     st.session_state.mode = mode
     st.session_state.idx = 0
     st.session_state.score = 0
     st.session_state.submitted = False
     st.session_state.feedback = None
     st.session_state.last_choice = None
-    st.session_state.responses = []  # store (q_index, chosen, correct)
+    st.session_state.responses = []  # list of dicts
+    st.session_state.started_at = None  # for timer
 
     order = list(range(n_questions))
-    if mode == "Exam Mode":
-        random.shuffle(order)  # random order for exam
+    if shuffle_questions:
+        random.shuffle(order)
     st.session_state.order = order
 
-# ---------- UI ----------
-st.set_page_config(page_title="Quiz App", layout="centered")
+
+def ensure_state(quiz_len: int):
+    if "mode" not in st.session_state:
+        st.session_state.mode = "Learning Mode"
+    if "idx" not in st.session_state:
+        st.session_state.idx = 0
+    if "score" not in st.session_state:
+        st.session_state.score = 0
+    if "submitted" not in st.session_state:
+        st.session_state.submitted = False
+    if "feedback" not in st.session_state:
+        st.session_state.feedback = None
+    if "last_choice" not in st.session_state:
+        st.session_state.last_choice = None
+    if "responses" not in st.session_state:
+        st.session_state.responses = []
+    if "order" not in st.session_state:
+        st.session_state.order = list(range(quiz_len))
+    if "started_at" not in st.session_state:
+        st.session_state.started_at = None
+
+
+# -----------------------------
+# APP UI
+# -----------------------------
 st.title("Quiz App (English)")
 
 quiz = load_quiz()
 if not quiz:
-    st.error("No questions loaded. Check Excel format / file path.")
+    st.error("No questions loaded. Please check the Excel file path/name and format.")
     st.stop()
 
 n = len(quiz)
+ensure_state(n)
 
-# ---------- Session state init ----------
-if "mode" not in st.session_state:
-    st.session_state.mode = "Learning Mode"
-if "idx" not in st.session_state:
-    st.session_state.idx = 0
-if "score" not in st.session_state:
-    st.session_state.score = 0
-if "submitted" not in st.session_state:
-    st.session_state.submitted = False
-if "feedback" not in st.session_state:
-    st.session_state.feedback = None
-if "last_choice" not in st.session_state:
-    st.session_state.last_choice = None
-if "responses" not in st.session_state:
-    st.session_state.responses = []
-if "order" not in st.session_state:
-    st.session_state.order = list(range(n))  # default learning mode order
+# -----------------------------
+# SIDEBAR CONTROLS
+# -----------------------------
+st.sidebar.header("Settings")
 
-# ---------- Mode switch control ----------
-st.sidebar.header("Mode")
 selected_mode = st.sidebar.radio(
-    "Choose a mode:",
+    "Mode",
     ["Learning Mode", "Exam Mode"],
     index=0 if st.session_state.mode == "Learning Mode" else 1
 )
 
-# If user switched mode, reset session for that mode
+# Mode behavior
+is_exam = (selected_mode == "Exam Mode")
+
+shuffle_questions = st.sidebar.checkbox(
+    "Shuffle question order (Exam Mode)",
+    value=True,
+    disabled=not is_exam
+)
+
+shuffle_options = st.sidebar.checkbox(
+    "Shuffle option order (A–E) (Exam Mode)",
+    value=True,
+    disabled=not is_exam
+)
+
+hide_feedback_until_end = st.sidebar.checkbox(
+    "Hide correctness until end (Exam Mode)",
+    value=True,
+    disabled=not is_exam
+)
+
+hide_explanations_until_end = st.sidebar.checkbox(
+    "Hide explanations until end (Exam Mode)",
+    value=True,
+    disabled=not is_exam
+)
+
+enable_timer = st.sidebar.checkbox(
+    "Enable timer (Exam Mode)",
+    value=False,
+    disabled=not is_exam
+)
+
+timer_minutes = st.sidebar.number_input(
+    "Timer minutes",
+    min_value=1,
+    max_value=300,
+    value=60,
+    step=5,
+    disabled=not (is_exam and enable_timer)
+)
+
+# Reset / Apply mode switch
 if selected_mode != st.session_state.mode:
-    reset_session_for_mode(selected_mode, n)
+    # Learning Mode: keep original order
+    if selected_mode == "Learning Mode":
+        reset_quiz("Learning Mode", n, shuffle_questions=False)
+    else:
+        reset_quiz("Exam Mode", n, shuffle_questions=shuffle_questions)
     st.rerun()
 
-# Optional controls
-with st.sidebar.expander("Exam Options", expanded=False):
-    hide_explain_in_exam = st.checkbox(
-        "Hide explanations during Exam Mode (show at end)",
-        value=True,
-        disabled=(st.session_state.mode != "Exam Mode")
-    )
+# Manual restart
+if st.sidebar.button("Restart / New Attempt"):
+    if st.session_state.mode == "Learning Mode":
+        reset_quiz("Learning Mode", n, shuffle_questions=False)
+    else:
+        reset_quiz("Exam Mode", n, shuffle_questions=shuffle_questions)
+    st.rerun()
 
-# ---------- Completion screen ----------
-if st.session_state.idx >= n:
-    st.success(f"✅ Completed {st.session_state.mode}! Score: {st.session_state.score}/{n} ({st.session_state.score/n*100:.1f}%)")
 
-    # Review section (especially useful for Exam Mode)
-    st.subheader("Review")
-    if st.session_state.responses:
-        for (q_idx, chosen, correct) in st.session_state.responses:
-            item = quiz[q_idx]
-            st.markdown(f"**Q:** {item['question']}")
-            st.write(f"Your answer: **{chosen}** | Correct: **{correct}**")
-            if item["interpretation"]:
-                st.info("Explanation / Interpretation:")
-                st.write(item["interpretation"])
-            st.divider()
+# -----------------------------
+# TIMER HANDLING (Exam Mode)
+# -----------------------------
+def get_time_left_seconds():
+    if not enable_timer or not is_exam:
+        return None
+    if st.session_state.started_at is None:
+        st.session_state.started_at = time.time()
+    elapsed = time.time() - st.session_state.started_at
+    total = timer_minutes * 60
+    return max(0, int(total - elapsed))
 
-    if st.button("Restart"):
-        reset_session_for_mode(st.session_state.mode, n)
+
+time_left = get_time_left_seconds()
+if is_exam and enable_timer:
+    mins = time_left // 60
+    secs = time_left % 60
+    st.sidebar.metric("Time left", f"{mins:02d}:{secs:02d}")
+
+    # Auto-finish when time is up
+    if time_left <= 0:
+        st.warning("⏰ Time is up! Submitting your exam...")
+        st.session_state.idx = n  # jump to completion page
         st.rerun()
+
+
+# -----------------------------
+# COMPLETION PAGE
+# -----------------------------
+if st.session_state.idx >= n:
+    st.success(f"✅ Completed {st.session_state.mode}!")
+    st.write(f"**Score:** {st.session_state.score}/{n} ({st.session_state.score/n*100:.1f}%)")
+
+    # Review controls
+    st.subheader("Review")
+    wrong_only = st.checkbox("Show wrong answers only", value=is_exam)
+
+    # Build review dataframe + display
+    review_rows = []
+    for resp in st.session_state.responses:
+        correct = (resp["chosen"] == resp["correct"])
+        if wrong_only and correct:
+            continue
+
+        q = quiz[resp["q_index"]]
+        st.markdown(f"**Q:** {q['question']}")
+        st.write(f"Your answer: **{resp['chosen']}** | Correct: **{resp['correct']}**")
+
+        if q["interpretation"]:
+            st.info("Explanation / Interpretation:")
+            st.write(q["interpretation"])
+
+        st.divider()
+
+        review_rows.append({
+            "question": q["question"],
+            "chosen": resp["chosen"],
+            "correct": resp["correct"],
+            "is_correct": correct
+        })
+
+    # Download results
+    if review_rows:
+        df_out = pd.DataFrame(review_rows)
+        csv = df_out.to_csv(index=False).encode("utf-8")
+        st.download_button(
+            "Download results (CSV)",
+            data=csv,
+            file_name="quiz_results.csv",
+            mime="text/csv"
+        )
 
     st.stop()
 
-# ---------- Progress bar (both modes) ----------
+
+# -----------------------------
+# PROGRESS BAR (Both Modes)
+# -----------------------------
 current_num = st.session_state.idx + 1
-progress = st.session_state.idx / n  # 0 to <1
+progress = st.session_state.idx / n
 st.progress(progress)
 st.caption(f"Progress: {current_num} / {n} ({progress*100:.1f}%)")
 
-# ---------- Get the current question using order ----------
+
+# -----------------------------
+# CURRENT QUESTION
+# -----------------------------
 q_index = st.session_state.order[st.session_state.idx]
 item = quiz[q_index]
 
 st.write(f"### Q{current_num}: {item['question']}")
 
+# Option order (shuffle only in Exam Mode if enabled)
+option_keys = list(item["options"].keys())
+if is_exam and shuffle_options:
+    random.shuffle(option_keys)
+
 choice = st.radio(
     "Select an answer:",
-    list(item["options"].keys()),
+    option_keys,
     format_func=lambda k: f"{k}. {item['options'][k]}",
     disabled=st.session_state.submitted
 )
@@ -180,8 +315,13 @@ with col1:
         else:
             st.session_state.feedback = ("error", f"Incorrect ❌  Correct answer: {correct}")
 
-        # store response for end review
-        st.session_state.responses.append((q_index, choice, correct))
+        # Save response for end review
+        st.session_state.responses.append({
+            "q_index": q_index,
+            "chosen": choice,
+            "correct": correct
+        })
+
         st.rerun()
 
 with col2:
@@ -193,26 +333,38 @@ with col2:
         st.rerun()
 
 with col3:
-    if st.button("Restart Quiz"):
-        reset_session_for_mode(st.session_state.mode, n)
+    if st.button("Quit / Finish Now"):
+        st.session_state.idx = n
         st.rerun()
 
-# ---------- Feedback + explanation ----------
-if st.session_state.submitted and st.session_state.feedback:
-    level, msg = st.session_state.feedback
-    getattr(st, level)(msg)
 
-    # Learning Mode: always show explanation immediately
-    # Exam Mode: show explanation depending on hide_explain_in_exam option
-    if st.session_state.mode == "Learning Mode":
+# -----------------------------
+# FEEDBACK + EXPLANATION
+# -----------------------------
+if st.session_state.submitted and st.session_state.feedback:
+    show_feedback = True
+    show_explain = True
+
+    # Exam Mode rules
+    if is_exam and hide_feedback_until_end:
+        show_feedback = False
+    if is_exam and hide_explanations_until_end:
+        show_explain = False
+
+    # Learning Mode: always show feedback + explanation
+    if not is_exam:
+        show_feedback = True
+        show_explain = True
+
+    if show_feedback:
+        level, msg = st.session_state.feedback
+        getattr(st, level)(msg)
+    else:
+        st.caption("Exam Mode: correctness will be shown in the final review.")
+
+    if show_explain:
         if item["interpretation"]:
             st.info("Explanation / Interpretation:")
             st.write(item["interpretation"])
     else:
-        # Exam Mode
-        if not hide_explain_in_exam:
-            if item["interpretation"]:
-                st.info("Explanation / Interpretation:")
-                st.write(item["interpretation"])
-        else:
-            st.caption("Exam Mode: Explanation will be shown in the review section after completion.")
+        st.caption("Exam Mode: explanations will be shown in the final review.")
